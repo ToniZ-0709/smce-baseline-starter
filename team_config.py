@@ -9,18 +9,18 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 # Team identity (required after fork)
 
-TEAM_NAME = "Team ABC"
-TEAM_MEMBERS = "[Member 1], [Member 2], [Member 3]"
-GITHUB_REPO = "https://github.com/your-team/ura-hackathon-team-abc"
-OTHER_RESOURCE = "https://example.com/other-resource"
+TEAM_NAME = "Team 15 - ArrayOfSunshine"
+TEAM_MEMBERS = "Phạm Ngọc Tú, Lê Ngọc Tường Vy, Lê Quang Thắng, Phạm Lưu Bang"
+GITHUB_REPO = "https://github.com/ToniZ-0709/smce-baseline-starter.git"
+OTHER_RESOURCE = ""
 STREAMLIT_APP_URL = ""  # e.g. "https://ura-team-abc.streamlit.app" after deploy
 
 
 # Streamlit page copy
 
 SUBTITLE = (
-    "OCR & Product Name Extraction from Social Media Images "
-    "by HCMUT URA Research Group"
+    "OCR & Brand, Product Name Extraction from Social Media Images "
+    "by Team 15 - ArrayOfSunshine"
 )
 PAGE_TITLE = f"The 2nd URA Hackathon - {TEAM_NAME}"
 BROWSER_TITLE = PAGE_TITLE
@@ -51,12 +51,13 @@ DEFAULT_MIN_CONF = 0.35
 # Model footprint (edit when you change OCR / models — benchmark layer reads this)
 
 MODEL_PROFILE: dict[str, str | float | None] = {
-    "pipeline": "EasyOCR (vi+en) + regex brands + sklearn product head",
-    "runtime_device": "CPU",
+    "pipeline": "PaddleOCR(det) + VietOCR(rec) + Hybrid Funnel (Regex/NER/Heuristics)",
+    "runtime_device": "CPU / GPU (Auto-detected)",
     "product_head_mb": None,  # auto-estimate when None
-    "ocr_backend_note": "EasyOCR weights ~200 MB (downloaded once, not in repo)",
+    "ocr_backend_note": "VietOCR vgg_transformer weights ~200MB, PaddleOCR det ~5MB (downloaded once)",
     "lightweight_notes": (
-        "Baseline is CPU-friendly; product head is a few MB. "
-        "Swap OCR for a lighter stack to improve latency on Cloud."
+        "Extraction logic (Regex, NER, Heuristics) is pure Python and lightweight. "
+        "To improve latency on CPU/Cloud deployments, swap VietOCR's vgg_transformer "
+        "for a lighter recognizer."
     ),
 }

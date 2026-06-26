@@ -236,10 +236,7 @@ def _render_about_tab() -> None:
     st.header("About")
     st.markdown(
         """
-        Tab này dành cho **mỗi team** trình bày giải pháp OCR + trích xuất
-        **brand_name** và **product_name** cho cuộc thi. Hãy thay các placeholder
-        bên dưới bằng nội dung thật của team bạn (hoặc chỉnh trực tiếp trong
-        [`streamlit_app.py`](streamlit_app.py) hàm `_render_about_tab`).
+        Trình bày giải pháp OCR + trích xuất brand_name và product_name của Team 15 - ArrayOfSunshine
         """
     )
 
@@ -272,36 +269,43 @@ def _render_about_tab() -> None:
     st.subheader("3. Ý tưởng & pipeline giải pháp")
     st.markdown(
         """
-        > **Placeholder — mô tả pipeline của team**
+        Giải pháp của chúng tôi kết hợp OCR cho Tiếng Việt cùng với bộ lọc 3 tầng (Regex + NER + Spatial Heuristics + ML Fallback):
 
-        1. **Tiền xử lý ảnh** — `[ví dụ: resize, tăng contrast, sharpen, …]`
-        2. **OCR** — `[ví dụ: EasyOCR vi+en, PaddleOCR, custom model, …]`
-        3. **Hậu xử lý OCR** — `[ví dụ: dedupe token, chuẩn hóa Unicode, …]`
-        4. **Trích xuất brand** — `[ví dụ: regex dictionary, NER, fuzzy match, …]`
-        5. **Trích xuất product** — `[ví dụ: rule-based, sklearn, LLM, …]`
-        6. **Hậu kiểm / ensemble** — `[nếu có]`
+        1. **Tiền xử lý ảnh:** Cân bằng độ tương phản (Contrast Enhancement, factor=1.35), thu nhỏ ảnh nếu quá lớn (max 1280px giữ nguyên tỷ lệ bằng Lanczos), và làm nét (Sharpen Filter) để tăng chất lượng nhận diện văn bản.
+        2. **Hệ thống OCR bao gồm 2 giai đoạn:**
+            - **Detection:** Sử dụng PaddleOCR để xác định tọa độ các vùng chứa chữ chính xác.
+            - **Sorting & Padding:** Sắp xếp lại thứ tự đọc (từ trên xuống dưới, từ trái sang phải) và tạo biên an toàn (padding=5px) trước khi cắt.
+            - **Recognition:** Sử dụng VietOCR (model vgg_transformer) để nhận dạng tiếng Việt cho từng vùng ảnh đã cắt.
+        3. **Hậu xử lý OCR:** Làm sạch khoảng trắng, chuẩn hóa Unicode tiếng Việt dựng sẵn và loại bỏ các token bị lặp liền kề.
+        4. **Hybrid funnels trích xuất:**
+            - **Tầng 1 (Regex):** Khớp dựa trên bộ từ điển brand_rules.
+            - **Tầng 2 (NER):** Nhận diện thực thể có tên sử dụng thư viện underthesea NER để phát hiện các brand mới lạ chưa có trong từ điển.
+            - **Tầng 3 (Spatial & Text Heuristics):** Phân tích diện tích bounding box, tần suất lặp lại của nhãn hiệu trên ảnh, tỷ lệ viết hoa và khoảng cách Proximity tới các keyword sản phẩm.
+            - **Tầng 4 (ML Fallback):** Logistic Regression kết hợp TF-IDF làm nhiệm vụ phân loại sản phẩm bổ trợ khi tầng regex khớp nhãn hiệu nhưng thiếu từ khóa dòng sản phẩm.
         """
     )
 
     st.subheader("4. Điểm khác biệt & đóng góp chính")
     st.markdown(
         """
-        - `[Điểm mạnh 1]`
-        - `[Điểm mạnh 2]`
-        - `[Điểm mạnh 3]`
+        - **Pipeline OCR 2 giai đoạn tối ưu tiếng Việt:** Kết hợp điểm mạnh phát hiện vùng chữ của PaddleOCR và nhận diện ký tự tiếng Việt của VietOCR.
+        - **Phân tích Spatial & Layout:** Sử dụng diện tích bounding box và tần suất xuất hiện của chữ viết hoa để định vị logo thương hiệu.
+        - **Từ điển quy tắc bao phủ cực rộng:** Hơn 100 quy tắc regex tinh chỉnh chi tiết cho các nhóm ngành hàng giúp tối ưu hóa F1 Score tối đa.
+        - **Cơ chế Fallback:** Tự động chuyển đổi linh hoạt giữa Regex -> NER -> Heuristics -> ML Classifier để giảm thiểu sai số.
         """
     )
 
     st.subheader("5. Công nghệ sử dụng")
     st.markdown(
         """
-        | Thành phần | Công nghệ (placeholder) |
-        |------------|-------------------------|
-        | OCR | `[EasyOCR / …]` |
-        | Brand extraction | `[Regex rules / …]` |
-        | Product extraction | `[Sklearn / …]` |
-        | Runtime | `[CPU / GPU, Python 3.11+]` |
-        | Demo UI | `Streamlit` |
+        | Thành phần | Công nghệ |
+        |------------|-----------|
+        | **OCR (Det / Rec)** | `PaddleOCR` + `VietOCR (vgg_transformer)` |
+        | **Linguistic / NER** | `underthesea` |
+        | **Heuristics & Rules** | Khớp quy tắc thực thể bằng Regex & cấu trúc không gian hình học |
+        | **Machine Learning** | TF-IDF Vectorizer + Logistic Regression |
+        | **Runtime** | `CPU / GPU (Auto-detected), Python 3.11+` |
+        | **Demo UI** | `Streamlit` |
         """
     )
 
@@ -335,10 +339,12 @@ def _render_about_tab() -> None:
     st.markdown(
         """
         **Hạn chế hiện tại**
-        - `[ví dụ: brand mới chưa có trong từ điển]`
+        - Tốc độ xử lý trên CPU còn chậm do model `vgg_transformer` của VietOCR yêu cầu nhiều tài nguyên tính toán.
+        - Nhận diện các từ viết tắt cực ngắn hoặc brand viết cách điệu phức tạp chưa tối ưu.
 
         **Hướng phát triển**
-        - `[ví dụ: fine-tune OCR trên domain retail VN]`
+        - Thay đổi mô hình nhận diện chữ của VietOCR bằng các phiên bản nhẹ hơn để giảm thiểu độ trễ trên CPU / Streamlit Cloud.
+        - Bổ sung bộ lọc sửa lỗi chính tả tiếng Việt cho OCR text trước khi trích xuất.
         """
     )
 

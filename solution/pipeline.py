@@ -1,9 +1,5 @@
 """
-Team solution pipeline — replace this module (and siblings) with your own approach.
-
-The Streamlit demo and submission script import:
-    predict_from_image(img) -> {"ocr_text", "brand_name", "product_name", "timing_ms"?}
-    get_model_profile() -> see shared/benchmark.py (template-owned)
+Team solution pipeline — Hybrid PaddleOCR + VietOCR + Heuristics
 """
 
 from __future__ import annotations
@@ -11,16 +7,13 @@ from __future__ import annotations
 import re
 import time
 from functools import lru_cache
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 
-from shared.data_utils import load_train_labels
-from solution.brand_rules import extract_brand_product, extract_product
-from solution.product_model import ProductPredictor
+from solution.brand_rules import predict_product
 from team_config import DEFAULT_MIN_CONF
-
 
 def preprocess(img: Image.Image, max_dim: int = 1280) -> Image.Image:
     w, h = img.size
@@ -29,7 +22,6 @@ def preprocess(img: Image.Image, max_dim: int = 1280) -> Image.Image:
         img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
     img = ImageEnhance.Contrast(img).enhance(1.35)
     return img.filter(ImageFilter.SHARPEN)
-
 
 def postprocess_ocr(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
@@ -42,55 +34,73 @@ def postprocess_ocr(text: str) -> str:
             deduped.append(tok)
     return " ".join(deduped)
 
+@lru_cache(maxsize=1)
+def get_detector():
+    from paddleocr import PaddleOCR
+    import logging
+    logging.getLogger('ppocr').setLevel(logging.ERROR)
+    # PaddleOCR loads weights once on first call
+    return PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
 
 @lru_cache(maxsize=1)
-def get_ocr_reader():
-    import easyocr
+def get_recognizer():
+    from vietocr.tool.predictor import Predictor
+    from vietocr.tool.config import Cfg
+    import torch
+    config = Cfg.load_config_from_name('vgg_transformer')
+    config['cnn']['pretrained'] = False
+    config['device'] = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    return Predictor(config)
 
-    return easyocr.Reader(["vi", "en"], gpu=False, verbose=False)
+def Crop_Padding(image, bbox, pad=5):
+    """Crop the axis-aligned bounding rectangle of `bbox` from `image`."""
+    box = np.array(bbox).astype(np.int32)
+    x_min = max(0, np.min(box[:, 0]) - pad)
+    x_max = min(image.shape[1], np.max(box[:, 0]) + pad)
+    y_min = max(0, np.min(box[:, 1]) - pad)
+    y_max = min(image.shape[0], np.max(box[:, 1]) + pad)
+    return image[y_min:y_max, x_min:x_max]
 
+def Sort_Boxes(dt_boxes):
+    """Sort reading order: top to bottom, left to right."""
+    if len(dt_boxes) == 0:
+        return []
+    dt_boxes = sorted(dt_boxes, key=lambda x: x[0][1]) # y-coord
+    return dt_boxes
 
-def run_ocr_on_image(img: Image.Image, reader, min_conf: float = DEFAULT_MIN_CONF) -> str:
-    img = preprocess(img.convert("RGB"))
-    try:
-        results = reader.readtext(np.array(img), detail=1, paragraph=False)
-        results = sorted(results, key=lambda r: (r[0][0][1], r[0][0][0]))
-        lines = [r[1] for r in results if r[2] > min_conf]
-        return postprocess_ocr(" ".join(lines))
-    except Exception:
-        return ""
+def run_ocr_on_image(img: Image.Image, detector, recognizer) -> tuple[str, list]:
+    img_pre = preprocess(img.convert("RGB"))
+    img_np = np.array(img_pre)
+    
+    result = detector.ocr(img_np, cls=True)
+    if not result or not result[0]:
+        return "", []
 
-
-@lru_cache(maxsize=1)
-def _product_model() -> ProductPredictor | None:
-    labels = load_train_labels()
-    if labels is None:
-        return None
-    model = ProductPredictor(min_class_count=3, prob_threshold=0.60, max_features=3000)
-    model.fit(labels, extract_product)
-    return model
-
-
-@lru_cache(maxsize=1)
-def _product_predict_fn() -> Callable[[str], str] | None:
-    model = _product_model()
-    return model.predict if model else None
-
-
-def predict_private(
-    ocr_text: str,
-    product_fn: Callable[[str], str] | None = None,
-) -> tuple[str, str]:
-    brand, product = extract_brand_product(ocr_text or "")
-    fn = product_fn or _product_predict_fn()
-    if fn and not brand and not product:
-        product = fn(ocr_text or "")
-    return brand, product
-
-
-def predict_from_text(ocr_text: str) -> tuple[str, str]:
-    """Extract brand + product from raw OCR text (no image)."""
-    return predict_private(ocr_text, _product_predict_fn())
+    dt_boxes = [res[0] for res in result[0]]
+    dt_boxes = Sort_Boxes(dt_boxes)
+    
+    texts = []
+    box_data = []
+    
+    for box in dt_boxes:
+        cropped = Crop_Padding(img_np, box)
+        if cropped.size == 0 or cropped.shape[0] == 0 or cropped.shape[1] == 0:
+            continue
+            
+        pil_crop = Image.fromarray(cropped)
+        text = recognizer.predict(pil_crop)
+        
+        # Calculate bounding box area
+        pts = np.array(box, dtype=np.float32)
+        width = np.linalg.norm(pts[0] - pts[1])
+        height = np.linalg.norm(pts[0] - pts[3])
+        area = width * height
+        
+        texts.append(text)
+        box_data.append({"text": text, "area": area})
+        
+    ocr_text = postprocess_ocr(" ".join(texts))
+    return ocr_text, box_data
 
 
 def predict_from_image(
@@ -101,18 +111,21 @@ def predict_from_image(
 ) -> dict[str, Any]:
     """
     Main entry point for Streamlit + batch submission.
-
+    
     Returns dict with keys: ocr_text, brand_name, product_name
     Optional timing_ms: {ocr, extract, total} in milliseconds.
     """
     t0 = time.perf_counter()
 
     t_ocr = time.perf_counter()
-    ocr_text = run_ocr_on_image(img, get_ocr_reader(), min_conf)
+    detector = get_detector()
+    recognizer = get_recognizer()
+    
+    ocr_text, box_data = run_ocr_on_image(img, detector, recognizer)
     ocr_ms = (time.perf_counter() - t_ocr) * 1000
 
     t_extract = time.perf_counter()
-    brand, product = predict_private(ocr_text, _product_predict_fn())
+    brand, product = predict_product(ocr_text, box_data)
     extract_ms = (time.perf_counter() - t_extract) * 1000
 
     total_ms = (time.perf_counter() - t0) * 1000
@@ -129,3 +142,6 @@ def predict_from_image(
             "total": round(total_ms, 1),
         }
     return result
+
+def predict_from_text(ocr_text: str) -> tuple[str, str]:
+    return predict_product(ocr_text)
