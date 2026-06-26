@@ -51,13 +51,13 @@ DEFAULT_MIN_CONF = 0.35
 # Model footprint (edit when you change OCR / models — benchmark layer reads this)
 
 MODEL_PROFILE: dict[str, str | float | None] = {
-    "pipeline": "PaddleOCR(det) + VietOCR(rec) + Hybrid Funnel (Regex/NER/Heuristics)",
+    "pipeline": "PaddleOCR(det) + VietOCR(rec) + Hybrid Funnel (Regex + ML / NER / Spatial)",
     "runtime_device": "CPU / GPU (Auto-detected)",
     "product_head_mb": None,  # auto-estimate when None
     "ocr_backend_note": "VietOCR vgg_transformer weights ~200MB, PaddleOCR det ~5MB (downloaded once)",
     "lightweight_notes": (
-        "Extraction logic (Regex, NER, Heuristics) is pure Python and lightweight. "
-        "To improve latency on CPU/Cloud deployments, swap VietOCR's vgg_transformer "
-        "for a lighter recognizer."
+        "Extraction logic relies entirely on Regex, a fast TF-IDF ML Fallback, NER, and basic Spatial box area calculation. "
+        "It is highly optimized and CPU-friendly. To further improve total latency on Cloud deployments, "
+        "you can swap VietOCR's vgg_transformer for a lighter recognizer."
     ),
 }

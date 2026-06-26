@@ -52,7 +52,7 @@ def get_recognizer():
     config['device'] = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     return Predictor(config)
 
-def Crop_Padding(image, bbox, pad=5):
+def Crop_Padding(image, bbox, pad=8):
     """Crop the axis-aligned bounding rectangle of `bbox` from `image`."""
     box = np.array(bbox).astype(np.int32)
     x_min = max(0, np.min(box[:, 0]) - pad)
@@ -72,34 +72,36 @@ def run_ocr_on_image(img: Image.Image, detector, recognizer) -> tuple[str, list]
     img_pre = preprocess(img.convert("RGB"))
     img_np = np.array(img_pre)
     
-    result = detector.ocr(img_np, cls=True)
-    if not result or not result[0]:
+    result = detector.ocr(img_np, cls=False)
+    if result is None or len(result) == 0 or result[0] is None:
         return "", []
 
     dt_boxes = [res[0] for res in result[0]]
-    dt_boxes = Sort_Boxes(dt_boxes)
+    if dt_boxes:
+        dt_boxes = Sort_Boxes(dt_boxes)
     
     texts = []
     box_data = []
     
     for box in dt_boxes:
-        cropped = Crop_Padding(img_np, box)
-        if cropped.size == 0 or cropped.shape[0] == 0 or cropped.shape[1] == 0:
+        cropped = Crop_Padding(img_np, box, pad=8)
+        if cropped.size == 0 or cropped.shape[0] < 8 or cropped.shape[1] < 8:
             continue
             
         pil_crop = Image.fromarray(cropped)
         text = recognizer.predict(pil_crop)
         
-        # Calculate bounding box area
-        pts = np.array(box, dtype=np.float32)
-        width = np.linalg.norm(pts[0] - pts[1])
-        height = np.linalg.norm(pts[0] - pts[3])
-        area = width * height
+        # Matching notebook check for > 1 length before recording box
+        if len(text.strip()) > 1:
+            # Matching notebook exact area calculation mechanism
+            width = abs(box[1][0] - box[0][0])
+            height = abs(box[2][1] - box[1][1])
+            area = width * height
+            texts.append(text.strip())
+            box_data.append({"text": text.strip(), "area": area})
         
-        texts.append(text)
-        box_data.append({"text": text, "area": area})
-        
-    ocr_text = postprocess_ocr(" ".join(texts))
+    ocr_text = " ".join(texts)
+    ocr_text = postprocess_ocr(ocr_text)
     return ocr_text, box_data
 
 
