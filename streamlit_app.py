@@ -269,19 +269,18 @@ def _render_about_tab() -> None:
     st.subheader("3. Ý tưởng & pipeline giải pháp")
     st.markdown(
         """
-        Giải pháp của chúng tôi kết hợp OCR cho Tiếng Việt cùng với bộ lọc 3 tầng (Regex + NER + Spatial Heuristics + ML Fallback):
+        Giải pháp của team mình kết hợp OCR cho Tiếng Việt cùng với bộ lọc 3 tầng (Regex + ML Fallback -> NER -> Spatial):
 
         1. **Tiền xử lý ảnh:** Cân bằng độ tương phản (Contrast Enhancement, factor=1.35), thu nhỏ ảnh nếu quá lớn (max 1280px giữ nguyên tỷ lệ bằng Lanczos), và làm nét (Sharpen Filter) để tăng chất lượng nhận diện văn bản.
         2. **Hệ thống OCR bao gồm 2 giai đoạn:**
             - **Detection:** Sử dụng PaddleOCR để xác định tọa độ các vùng chứa chữ chính xác.
-            - **Sorting & Padding:** Sắp xếp lại thứ tự đọc (từ trên xuống dưới, từ trái sang phải) và tạo biên an toàn (padding=5px) trước khi cắt.
+            - **Sorting & Padding:** Sắp xếp lại thứ tự đọc từ trên xuống dưới, từ trái sang phải và tạo biên an toàn (padding=8px) trước khi cắt.
             - **Recognition:** Sử dụng VietOCR (model vgg_transformer) để nhận dạng tiếng Việt cho từng vùng ảnh đã cắt.
         3. **Hậu xử lý OCR:** Làm sạch khoảng trắng, chuẩn hóa Unicode tiếng Việt dựng sẵn và loại bỏ các token bị lặp liền kề.
         4. **Hybrid funnels trích xuất:**
-            - **Tầng 1 (Regex):** Khớp dựa trên bộ từ điển brand_rules.
-            - **Tầng 2 (NER):** Nhận diện thực thể có tên sử dụng thư viện underthesea NER để phát hiện các brand mới lạ chưa có trong từ điển.
-            - **Tầng 3 (Spatial & Text Heuristics):** Phân tích diện tích bounding box, tần suất lặp lại của nhãn hiệu trên ảnh, tỷ lệ viết hoa và khoảng cách Proximity tới các keyword sản phẩm.
-            - **Tầng 4 (ML Fallback):** Logistic Regression kết hợp TF-IDF làm nhiệm vụ phân loại sản phẩm bổ trợ khi tầng regex khớp nhãn hiệu nhưng thiếu từ khóa dòng sản phẩm.
+            - **Tầng 1 (Regex & ML Fallback):** Khớp dựa trên bộ từ điển brand_rules độ chính xác cao. Sử dụng Logistic Regression kết hợp TF-IDF làm nhiệm vụ dự đoán bổ trợ khi tầng regex tìm thấy nhãn hiệu nhưng thiếu từ khóa dòng sản phẩm.
+            - **Tầng 2 (NER):** Sử dụng thư viện underthesea NER để phát hiện các brand mới lạ chưa có trong từ điển.
+            - **Tầng 3 (Spatial Heuristics):** Phân tích trực tiếp diện tích bounding box để xác định logo/tên thương hiệu có kích thước nổi bật nhất trên ảnh.
         """
     )
 
@@ -289,9 +288,9 @@ def _render_about_tab() -> None:
     st.markdown(
         """
         - **Pipeline OCR 2 giai đoạn tối ưu tiếng Việt:** Kết hợp điểm mạnh phát hiện vùng chữ của PaddleOCR và nhận diện ký tự tiếng Việt của VietOCR.
-        - **Phân tích Spatial & Layout:** Sử dụng diện tích bounding box và tần suất xuất hiện của chữ viết hoa để định vị logo thương hiệu.
+        - **Phân tích Spatial cực nhanh (Lightweight):** Đánh giá diện tích bounding box để tự động định vị nhãn hiệu lớn nhất trên ảnh, lược bỏ hoàn toàn các vòng lặp tính toán phức tạp giúp tối ưu tài nguyên CPU.
         - **Từ điển quy tắc bao phủ cực rộng:** Hơn 100 quy tắc regex tinh chỉnh chi tiết cho các nhóm ngành hàng giúp tối ưu hóa F1 Score tối đa.
-        - **Cơ chế Fallback:** Tự động chuyển đổi linh hoạt giữa Regex -> NER -> Heuristics -> ML Classifier để giảm thiểu sai số.
+        - **Cơ chế Fallback thông minh:** Chuyển đổi linh hoạt giữa Regex -> ML Classifier -> NER -> Spatial Area để giảm thiểu sai số với những brand mới.
         """
     )
 
@@ -302,9 +301,9 @@ def _render_about_tab() -> None:
         |------------|-----------|
         | **OCR (Det / Rec)** | `PaddleOCR` + `VietOCR (vgg_transformer)` |
         | **Linguistic / NER** | `underthesea` |
-        | **Heuristics & Rules** | Khớp quy tắc thực thể bằng Regex & cấu trúc không gian hình học |
+        | **Spatial & Rules** | Khớp quy tắc bằng Regex & cấu trúc không gian (Box Area) |
         | **Machine Learning** | TF-IDF Vectorizer + Logistic Regression |
-        | **Runtime** | `CPU / GPU (Auto-detected), Python 3.11+` |
+        | **Runtime** | `CPU / GPU (Auto-detected), Python 3.10+` |
         | **Demo UI** | `Streamlit` |
         """
     )
