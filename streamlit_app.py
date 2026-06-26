@@ -269,28 +269,35 @@ def _render_about_tab() -> None:
     st.subheader("3. Ý tưởng & pipeline giải pháp")
     st.markdown(
         """
-        Giải pháp của team mình kết hợp OCR cho Tiếng Việt cùng với bộ lọc 3 tầng (Regex + ML Fallback -> NER -> Spatial):
+        Giải pháp của team mình kết hợp OCR cho Tiếng Việt cùng với bộ lọc hybrid 4 tầng:
 
-        1. **Tiền xử lý ảnh:** Cân bằng độ tương phản (Contrast Enhancement, factor=1.35), thu nhỏ ảnh nếu quá lớn (max 1280px giữ nguyên tỷ lệ bằng Lanczos), và làm nét (Sharpen Filter) để tăng chất lượng nhận diện văn bản.
-        2. **Hệ thống OCR bao gồm 2 giai đoạn:**
-            - **Detection:** Sử dụng PaddleOCR để xác định tọa độ các vùng chứa chữ chính xác.
-            - **Sorting & Padding:** Sắp xếp lại thứ tự đọc từ trên xuống dưới, từ trái sang phải và tạo biên an toàn (padding=8px) trước khi cắt.
-            - **Recognition:** Sử dụng VietOCR (model vgg_transformer) để nhận dạng tiếng Việt cho từng vùng ảnh đã cắt.
-        3. **Hậu xử lý OCR:** Làm sạch khoảng trắng, chuẩn hóa Unicode tiếng Việt dựng sẵn và loại bỏ các token bị lặp liền kề.
-        4. **Hybrid funnels trích xuất:**
-            - **Tầng 1 (Regex & ML Fallback):** Khớp dựa trên bộ từ điển brand_rules độ chính xác cao. Sử dụng Logistic Regression kết hợp TF-IDF làm nhiệm vụ dự đoán bổ trợ khi tầng regex tìm thấy nhãn hiệu nhưng thiếu từ khóa dòng sản phẩm.
-            - **Tầng 2 (NER):** Sử dụng thư viện underthesea NER để phát hiện các brand mới lạ chưa có trong từ điển.
-            - **Tầng 3 (Spatial Heuristics):** Phân tích trực tiếp diện tích bounding box để xác định logo/tên thương hiệu có kích thước nổi bật nhất trên ảnh.
+        1. **Tiền xử lý ảnh (`preprocess`):**
+            - Smart rescale: upscale thumbnail nhỏ (< 800px) lên 800px, downscale ảnh lớn (> 1536px) xuống 1536px giữ tỷ lệ
+            - CLAHE (Contrast Limited Adaptive Histogram Equalization) chỉ trên kênh Lightness (LAB color space) để tăng độ tương phản cục bộ mà vẫn giữ màu sắc
+            - Mild sharpen với kernel tùy chỉnh để làm nét văn bản
+        2. **Hệ thống OCR 2 giai đoạn:**
+            - **Detection:** PaddleOCR (`det_db_box_thresh=0.3`, `det_db_unclip_ratio=2.0`) xác định tọa độ các vùng chứa văn bản
+            - **Sorting & Padding:** Sắp xếp boxes theo thứ tự đọc tự nhiên (top→bottom, left→right) với threshold động dựa trên median box height, padding 8px trước khi crop
+            - **Recognition:** VietOCR (`vgg_transformer`) nhận dạng tiếng Việt cho từng vùng đã crop
+        3. **Hậu xử lý OCR (`postprocess_ocr`):** Chuẩn hóa whitespace và loại bỏ token lặp liền kề (phổ biến trên thumbnail)
+        4. **Hybrid extraction funnel (`predict_product`) — 4 tầng:**
+            - **Tầng 1 (Regex):** Khớp `BRAND_RULES` (140+ quy tắc bao phủ Phase 1 & 2). Nếu tìm thấy brand nhưng thiếu product line:
+                - ML fallback (`ProductPredictor` — noise gate + multi-class Logistic Regression + TF-IDF char/word n-grams) dự đoán product nếu brand khớp
+                - Text subtraction heuristic (`extract_product_by_subtraction`) trích xuất product từ token còn lại sau khi loại brand + noise (số g/ml/kg, @, #, ₫)
+            - **Tầng 2 (NER):** `underthesea` NER phát hiện tổ chức (B-ORG/I-ORG), lọc qua blacklist tiếng Việt/Anh, **yêu cầu keyword danh mục** (`PRODUCT_KEYWORDS`: kem, sữa, pate...). Nếu thiếu product → text subtraction
+            - **Tầng 3 (Spatial):** Chọn box có diện tích lớn nhất (>1.5× trung bình) làm brand, box lớn thứ hai làm product, **yêu cầu keyword danh mục**
+            - **Tầng 4 (Fallback):** Trả về `(" ", " ")` nếu tất cả tầng thất bại
         """
     )
 
     st.subheader("4. Điểm khác biệt & đóng góp chính")
     st.markdown(
         """
-        - **Pipeline OCR 2 giai đoạn tối ưu tiếng Việt:** Kết hợp điểm mạnh phát hiện vùng chữ của PaddleOCR và nhận diện ký tự tiếng Việt của VietOCR.
-        - **Phân tích Spatial cực nhanh (Lightweight):** Đánh giá diện tích bounding box để tự động định vị nhãn hiệu lớn nhất trên ảnh, lược bỏ hoàn toàn các vòng lặp tính toán phức tạp giúp tối ưu tài nguyên CPU.
-        - **Từ điển quy tắc bao phủ cực rộng:** Hơn 100 quy tắc regex tinh chỉnh chi tiết cho các nhóm ngành hàng giúp tối ưu hóa F1 Score tối đa.
-        - **Cơ chế Fallback thông minh:** Chuyển đổi linh hoạt giữa Regex -> ML Classifier -> NER -> Spatial Area để giảm thiểu sai số với những brand mới.
+        - **Pipeline OCR 2 giai đoạn tối ưu tiếng Việt:** Kết hợp điểm mạnh phát hiện vùng chữ của PaddleOCR và nhận diện ký tự tiếng Việt của VietOCR với thuật toán sắp xếp box thông minh (vertical grouping dựa trên median height)
+        - **Zero-shot generalization cho brand mới (Phase 2):** Pipeline được thiết kế để xử lý cả brand đã biết (Phase 1) lẫn brand hoàn toàn mới (Phase 2) qua NER + spatial heuristics
+        - **Từ điển quy tắc bao phủ rộng:** 140+ quy tắc regex tinh chỉnh chi tiết bao phủ nhiều ngành hàng (Phase 1: sữa, pate, đồ hộp; Phase 2 expansion: cosmetics/skincare, baby formula, beverages)
+        - **Cơ chế Fallback 4 tầng:** Chuyển đổi linh hoạt Regex → (ML + text subtraction) → NER → Spatial → empty, mỗi tầng có noise gate riêng (keyword validation, blacklist filtering, area threshold)
+        - **Preprocessing thông minh:** CLAHE chỉ trên kênh L (LAB color space) giữ nguyên màu sắc, smart rescaling cho cả thumbnail nhỏ lẫn ảnh lớn, mild sharpen kernel tùy chỉnh
         """
     )
 
@@ -299,11 +306,13 @@ def _render_about_tab() -> None:
         """
         | Thành phần | Công nghệ |
         |------------|-----------|
-        | **OCR (Det / Rec)** | `PaddleOCR` + `VietOCR (vgg_transformer)` |
-        | **Linguistic / NER** | `underthesea` |
-        | **Spatial & Rules** | Khớp quy tắc bằng Regex & cấu trúc không gian (Box Area) |
-        | **Machine Learning** | TF-IDF Vectorizer + Logistic Regression |
-        | **Runtime** | `CPU / GPU (Auto-detected), Python 3.10+` |
+        | **OCR Detection** | `PaddleOCR 2.8.0` (lang='en', `det_db_box_thresh=0.3`, `det_db_unclip_ratio=2.0`) |
+        | **OCR Recognition** | `VietOCR (vgg_transformer)` — tiếng Việt |
+        | **Image Preprocessing** | `OpenCV` (CLAHE, LAB color space, smart resize, sharpen kernel) + `Pillow` |
+        | **Linguistic / NER** | `underthesea` (B-ORG / I-ORG tagging) |
+        | **Spatial & Rules** | Regex `BRAND_RULES` (140+ patterns) + bounding box area analysis |
+        | **Machine Learning** | `scikit-learn` — TF-IDF (char_wb 2-4 + word 1-2) + Logistic Regression (2-stage: noise gate + multi-class) |
+        | **Runtime** | CPU / GPU auto-detected (`torch.cuda.is_available()`), Python 3.10+ |
         | **Demo UI** | `Streamlit` |
         """
     )
@@ -317,7 +326,7 @@ def _render_about_tab() -> None:
         | 1 − CER (local) | `[—]` |
         | F1 product (local) | `[—]` |
         | **Private score** | `[—]` |
-        | Latency (avg / image) | **1231.1** ms (ocr 1221.8 · extract 9.3) |
+        | Latency (avg / image) | **1005.5** ms (ocr 1000.9 · extract 4.6) |
         | Product head size | **0.0** MB |
         """
     )
@@ -338,12 +347,16 @@ def _render_about_tab() -> None:
     st.markdown(
         """
         **Hạn chế hiện tại**
-        - Tốc độ xử lý trên CPU còn chậm do model `vgg_transformer` của VietOCR yêu cầu nhiều tài nguyên tính toán.
-        - Nhận diện các từ viết tắt cực ngắn hoặc brand viết cách điệu phức tạp chưa tối ưu.
+        - Tốc độ xử lý trên CPU còn chậm do model `vgg_transformer` của VietOCR yêu cầu nhiều tài nguyên tính toán
+        - Nhận diện các từ viết tắt cực ngắn hoặc brand viết cách điệu phức tạp chưa tối ưu
+        - **Dependency on category keywords:** Tầng NER và Spatial đều yêu cầu có keyword trong `PRODUCT_KEYWORDS`. Khi xuất hiện danh mục sản phẩm hoàn toàn mới (không khớp keyword), pipeline sẽ trả về empty thay vì hallucinate
+        - **NumPy 2.x compatibility:** Cần monkeypatch `np.sctypes` và `PIL._util.is_directory` để chạy được paddleocr 2.8.0 trên môi trường NumPy 2.x (đã xử lý sẵn trong notebook)
 
         **Hướng phát triển**
-        - Thay đổi mô hình nhận diện chữ của VietOCR bằng các phiên bản nhẹ hơn để giảm thiểu độ trễ trên CPU / Streamlit Cloud.
-        - Bổ sung bộ lọc sửa lỗi chính tả tiếng Việt cho OCR text trước khi trích xuất.
+        - Thay đổi model nhận diện chữ của VietOCR bằng các phiên bản nhẹ hơn để giảm độ trễ trên CPU / Streamlit Cloud
+        - Bổ sung bộ lọc sửa lỗi chính tả tiếng Việt cho OCR text trước khi trích xuất
+        - Mở rộng `PRODUCT_KEYWORDS` tự động qua data mining trên training set thay vì hardcode
+        - Thử nghiệm thay TF-IDF + Logistic Regression bằng embedding-based classifier (multilingual BERT) cho zero-shot brand matching
         """
     )
 
