@@ -13,7 +13,7 @@ TEAM_NAME = "Team 15 - ArrayOfSunshine"
 TEAM_MEMBERS = "Phạm Ngọc Tú, Lê Ngọc Tường Vy, Lê Quang Thắng, Phạm Lưu Bang"
 GITHUB_REPO = "https://github.com/ToniZ-0709/smce-baseline-starter.git"
 OTHER_RESOURCE = ""
-STREAMLIT_APP_URL = ""  # e.g. "https://ura-team-abc.streamlit.app" after deploy
+STREAMLIT_APP_URL = "https://ura-team-15.streamlit.app"  # e.g. "https://ura-team-abc.streamlit.app" after deploy
 
 
 # Streamlit page copy

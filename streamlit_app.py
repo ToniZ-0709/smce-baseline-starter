@@ -318,8 +318,8 @@ def _render_about_tab() -> None:
         | 1 − CER (local) | `[—]` |
         | F1 product (local) | `[—]` |
         | **Private score** | `[—]` |
-        | Latency (avg / image) | `[—]` ms |
-        | Product head size | `[—]` MB |
+        | Latency (avg / image) | **1231.1** ms (ocr 1221.8 · extract 9.3) |
+        | Product head size | **0.0** MB |
         """
     )
     st.markdown(
